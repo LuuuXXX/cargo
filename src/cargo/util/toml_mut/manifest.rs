@@ -363,6 +363,30 @@ impl LocalManifest {
         Ok(())
     }
 
+    /// Add feature entry to a Cargo.toml.
+    pub fn insert_into_feature_table(
+        &mut self,
+        table_path: &[String],
+        dep: &Dependency,
+    ) -> CargoResult<()> {
+        let crate_root = self
+            .path
+            .parent()
+            .expect("manifest path is absolute")
+            .to_owned();
+        let dep_key = dep.toml_key();
+        let feature = dep.to_feature();
+        let table = self.get_table_mut(table_path)?;
+
+        // Check whether `dep:<dep>` is defined in the [features] section.
+        if !feature.check_duplicate_feature(table) {
+            let new_feature = feature.to_toml(&crate_root);
+            table[dep_key] = new_feature;
+        }
+
+        Ok(())
+    }
+
     /// Remove entry from a Cargo.toml.
     pub fn remove_from_table(&mut self, table_path: &[String], name: &str) -> CargoResult<()> {
         let parent_table = self.get_table_mut(table_path)?;

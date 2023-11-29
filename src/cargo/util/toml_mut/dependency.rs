@@ -583,6 +583,13 @@ impl Dependency {
             unreachable!("Invalid dependency type: {}", item.type_name());
         }
     }
+
+    /// Convert dependency to Feature.
+    pub fn to_feature(&self) -> Feature {
+        let feature = Feature::new(self.name.to_string());
+        let feature_value = feature.as_feature();
+        feature.add_feature(feature_value)
+    }
 }
 
 fn overwrite_value(
@@ -918,6 +925,68 @@ impl WorkspaceSource {
 impl Display for WorkspaceSource {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         "workspace".fmt(f)
+    }
+}
+
+pub struct Feature {
+    /// The name of the feature (as it is set in its `Cargo.toml`).
+    pub name: String,
+    /// List of features to add.
+    pub features: IndexSet<String>,
+}
+
+impl Feature {
+    pub fn new(name: String) -> Self {
+        Self {
+            name: name,
+            features: IndexSet::new(),
+        }
+    }
+
+    pub fn add_feature(mut self, value: String) -> Self {
+        self.features.insert(value);
+        self
+    }
+
+    pub fn as_feature(&self) -> String {
+        format!("dep:{}", self.name)
+    }
+
+    /// Convert feature to TOML.
+    /// Panics if the path is relative
+    pub fn to_toml(&self, crate_root: &Path) -> toml_edit::Item {
+        assert!(
+            crate_root.is_absolute(),
+            "Absolute path needed, got: {}",
+            crate_root.display()
+        );
+        let features: toml_edit::Value = self.features.iter().cloned().collect();
+        toml_edit::value(features)
+    }
+
+    /// Check whether `dep:<dep>` is defined in the [features] section.
+    ///
+    /// `true`  if there is a define `dep:<dep>`
+    /// `false` if `dep:<dep>` is not used ever.
+    ///
+    /// Make sure that `dep:<dep>` is included in one of features in the [features] table.
+    pub fn check_duplicate_feature(&self, item: &mut toml_edit::Item) -> bool {
+        item.as_table_like_mut().unwrap().iter().any(|(_, values)| {
+            if let Some(values) = &values.as_array() {
+                values.iter().any(|value| match value.as_str() {
+                    Some(val) => val.to_string().eq(&self.as_feature()),
+                    None => false,
+                })
+            } else {
+                false
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for Feature {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.name.fmt(f)
     }
 }
 

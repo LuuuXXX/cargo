@@ -196,6 +196,14 @@ pub fn add(workspace: &Workspace<'_>, options: &AddOptions<'_>) -> CargoResult<(
         print_dep_table_msg(&mut options.config.shell(), &dep)?;
 
         manifest.insert_into_table(&dep_table, &dep)?;
+        if let Some(option) = dep.optional {
+            let rust_version_check =
+                check_rust_version_for_optional_dependency(workspace.rust_version())?;
+            if option && rust_version_check {
+                let features_table: Vec<String> = vec![String::from("features")];
+                manifest.insert_into_feature_table(&features_table, &dep)?;
+            }
+        }
         manifest.gc_dep(dep.toml_key());
     }
 
@@ -467,6 +475,26 @@ fn check_invalid_ws_keys(toml_key: &str, arg: &DepOp) -> CargoResult<()> {
         anyhow::bail!("{}", err_msg(toml_key, "--rename", "package"))
     }
     Ok(())
+}
+
+/// When the `--optional` option is added using `cargo add`, we need to
+/// check the current rust-version. As the `dep:` syntax is only avaliable
+/// starting with Rust 1.60.0
+///
+/// `true` means that the rust-version is None or the rust-version is higher
+/// than the version needed.
+///
+/// Note: Previous versions can only use the implicit feature name.
+fn check_rust_version_for_optional_dependency(
+    rust_version: Option<&RustVersion>,
+) -> CargoResult<bool> {
+    match rust_version {
+        Some(version) => {
+            let syntax_support_version = String::from("1.60.0");
+            Ok(version.to_string().cmp(&syntax_support_version).is_ge())
+        }
+        None => Ok(true),
+    }
 }
 
 /// Provide the existing dependency for the target table
